@@ -223,7 +223,18 @@
 
       if ((data.rows || []).length === 0) {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="7" class="small">No results</td>`;
+        tr.style.cursor = "pointer";
+        tr.title = "Click to view details";
+        tr.addEventListener("click", () => openModal(r));
+        tr.innerHTML = `
+          <td>${r.sku ?? ""}</td>
+          <td>${r.descripcion ?? ""}</td>
+          <td>${(r.categoria ?? "")}</td>
+          <td>${(r.proveedor ?? "")}</td>
+          <td class="num">${intfmt(r.stock)}</td>
+          <td class="num">${money(r.costo)}</td>
+          <td class="num">${money(r.valor)}</td>
+        `;
         tbody.appendChild(tr);
       }
 
@@ -277,7 +288,38 @@
     }
     function quickMissingCategory(){ state.missingCategory=1; state.missingSupplier=0; state.page=1; refresh(); }
     function quickMissingSupplier(){ state.missingCategory=0; state.missingSupplier=1; state.page=1; refresh(); }
+    function openModal(r){
+  document.getElementById("m_title").textContent = `Product detail - ${r.sku ?? ""}`;
 
+  const body = document.getElementById("m_body");
+  const items = [
+    ["SKU", r.sku],
+    ["Description", r.descripcion],
+    ["Category", r.categoria],
+    ["Supplier", r.proveedor],
+    ["Stock", intfmt(r.stock)],
+    ["Cost", money(r.costo)],
+    ["Price", money(r.precio)],
+    ["Value (cost)", money(r.valor)]
+  ];
+
+  body.innerHTML = items.map(([k,v]) =>
+    `<div class="k">${k}</div><div>${(v ?? "").toString()}</div>`
+  ).join("");
+
+  document.getElementById("modalBackdrop").style.display = "flex";
+}
+
+function closeModal(e){
+  // allow both direct call and backdrop click
+  if (e && e.target && e.target.id !== "modalBackdrop") return;
+  document.getElementById("modalBackdrop").style.display = "none";
+}
+
+// Esc to close
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeModal();
+});
     (async function init(){
       await loadFilters();
       await refresh();
@@ -317,4 +359,5 @@
 </div>
 </body>
 </html>
+
 
