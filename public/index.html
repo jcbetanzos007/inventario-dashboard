@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Inventory Dashboard</title>
+  <style>
+    body{font-family:Arial, sans-serif; margin:16px;}
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-bottom:12px;}
+    label{display:block; font-size:12px; color:#333; margin-bottom:4px;}
+    select,input{padding:8px; min-width:220px;}
+    button{padding:8px 12px; cursor:pointer;}
+    table{border-collapse:collapse; width:100%; margin-top:12px;}
+    th,td{border:1px solid #ddd; padding:8px; font-size:13px;}
+    th{background:#f3f3f3; text-align:left;}
+    .kpi{margin-top:10px; font-size:14px;}
+  </style>
+</head>
+<body>
+  <h2>Inventory Dashboard</h2>
+
+  <div class="row">
+    <div>
+      <label>Category</label>
+      <select id="categoria">
+        <option value="">All</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Supplier</label>
+      <select id="proveedor">
+        <option value="">All</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Search (SKU or description)</label>
+      <input id="q" placeholder="e.g. MPO, cable, SKU123" />
+    </div>
+
+    <button onclick="loadData()">Apply</button>
+  </div>
+
+  <div class="kpi" id="kpi"></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>SKU</th>
+        <th>Description</th>
+        <th>Category</th>
+        <th>Supplier</th>
+        <th>Stock</th>
+        <th>Cost</th>
+        <th>Value</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <script>
+    async function loadFilters(){
+      const res = await fetch("/api/filtros");
+      const data = await res.json();
+
+      const cat = document.getElementById("categoria");
+      const prov = document.getElementById("proveedor");
+
+      data.categorias.forEach(n => {
+        const opt = document.createElement("option");
+        opt.value = n.trim();
+        opt.textContent = n.trim();
+        cat.appendChild(opt);
+      });
+
+      data.proveedores.forEach(n => {
+        const opt = document.createElement("option");
+        opt.value = n.trim();
+        opt.textContent = n.trim();
+        prov.appendChild(opt);
+      });
+    }
+
+    function money(x){
+      const n = Number(x || 0);
+      return n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+
+    async function loadData(){
+      const categoria = document.getElementById("categoria").value;
+      const proveedor = document.getElementById("proveedor").value;
+      const q = document.getElementById("q").value;
+
+      const params = new URLSearchParams();
+      if (categoria) params.set("categoria", categoria);
+      if (proveedor) params.set("proveedor", proveedor);
+      if (q) params.set("q", q);
+
+      const res = await fetch("/api/inventario?" + params.toString());
+      const data = await res.json();
+
+      const tbody = document.getElementById("rows");
+      tbody.innerHTML = "";
+
+      let totalValue = 0;
+      let totalItems = 0;
+
+      data.forEach(r => {
+        totalValue += Number(r.valor || 0);
+        totalItems += 1;
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${r.sku ?? ""}</td>
+          <td>${r.descripcion ?? ""}</td>
+          <td>${(r.categoria ?? "").trim()}</td>
+          <td>${(r.proveedor ?? "").trim()}</td>
+          <td>${r.stock ?? 0}</td>
+          <td>${money(r.costo)}</td>
+          <td>${money(r.valor)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById("kpi").textContent =
+        `Rows: ${totalItems.toLocaleString()} | Total inventory value (cost): ${money(totalValue)}`;
+    }
+
+    (async function init(){
+      await loadFilters();
+      await loadData();
+    })();
+  </script>
+</body>
+</html>
