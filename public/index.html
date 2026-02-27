@@ -4,29 +4,42 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Invetory Amazon Dashboard</title>
-    <style>
+  <style>
     body{font-family:Arial, sans-serif; margin:16px; color:#111;}
-    h2{margin:0 0 12px 0;}
+    h2{margin:0 0 8px 0;}
+    h4{margin:0 0 12px 0; font-weight:600; color:#333;}
+
     .grid{display:grid; gap:10px;}
     .kpis{grid-template-columns:repeat(4,minmax(180px,1fr));}
     .card{border:1px solid #e6e6e6; border-radius:10px; padding:12px; background:#fff;}
     .k-title{font-size:12px; color:#666; margin-bottom:6px;}
     .k-val{font-size:20px; font-weight:700;}
+
     .row{display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin:12px 0;}
     label{display:block; font-size:12px; color:#333; margin-bottom:4px;}
     select,input{padding:8px; min-width:180px; border:1px solid #ddd; border-radius:8px;}
     button{padding:8px 12px; border:1px solid #ddd; border-radius:8px; background:#f7f7f7; cursor:pointer;}
     button.primary{background:#111; color:#fff; border-color:#111;}
     button:disabled{opacity:.6; cursor:not-allowed;}
+
     .quick{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 0;}
-    .meta{display:flex; justify-content:space-between; align-items:center; margin-top:10px; gap:10px; flex-wrap:wrap;}
-    table{border-collapse:collapse; width:100%; margin-top:10px;}
-    th,td{border-bottom:1px solid #eee; padding:8px; font-size:13px;}
-    th{background:#fafafa; text-align:left; position:sticky; top:0;}
-    tbody tr:nth-child(odd){background:#fcfcfc;}
-    td.num{text-align:right; font-variant-numeric:tabular-nums;}
+    .meta{
+      display:flex; justify-content:space-between; align-items:center;
+      margin-top:10px; gap:10px; flex-wrap:wrap;
+    }
     .small{font-size:12px; color:#666;}
     .loading{opacity:.6;}
+
+    .pager-controls{display:flex; gap:10px; align-items:end; flex-wrap:wrap;}
+    .pager-buttons{display:flex; gap:8px; align-items:center;}
+
+    /* Table */
+    .table-wrap{width:100%; overflow:auto; border:1px solid #eee; border-radius:10px; margin-top:10px;}
+    table{border-collapse:collapse; width:100%; min-width:780px;}
+    th,td{border-bottom:1px solid #eee; padding:8px; font-size:13px; background:#fff;}
+    th{background:#fafafa; text-align:left; position:sticky; top:0; z-index:1;}
+    tbody tr:nth-child(odd) td{background:#fcfcfc;}
+    td.num{text-align:right; font-variant-numeric:tabular-nums;}
 
     /* Modal styles */
     .modal-backdrop{
@@ -51,11 +64,27 @@
       padding:12px 14px; border-top:1px solid #eee;
       display:flex; justify-content:flex-end; gap:8px;
     }
+
+    /* Responsive tweaks */
+    @media (max-width: 900px){
+      .kpis{grid-template-columns:repeat(2, minmax(160px,1fr));}
+      select,input{min-width:160px;}
+      body{margin:12px;}
+    }
+    @media (max-width: 520px){
+      .kpis{grid-template-columns:1fr;}
+      .row > div{flex:1 1 100%;}
+      select,input{min-width:100%; width:100%;}
+      .meta{align-items:flex-start;}
+      .pager-controls{width:100%;}
+    }
   </style>
 </head>
+
 <body>
   <h2>Inventory_Amazon Dashboard</h2>
-  <H4>Fundamentos de Base de Datos - Profesor: Juan Manuel Gutierrez</H4>
+  <h4>Fundamentos de Base de Datos - Profesor: Juan Manuel Gutierrez</h4>
+
   <div class="grid kpis" id="kpiGrid">
     <div class="card"><div class="k-title">Total products</div><div class="k-val" id="k_total_products">-</div></div>
     <div class="card"><div class="k-title">Total stock units</div><div class="k-val" id="k_total_stock">-</div></div>
@@ -68,14 +97,17 @@
       <label>Category</label>
       <select id="categoria"><option value="">All</option></select>
     </div>
+
     <div>
       <label>Supplier</label>
       <select id="proveedor"><option value="">All</option></select>
     </div>
+
     <div>
       <label>Search</label>
       <input id="q" placeholder="SKU or description" />
     </div>
+
     <div>
       <label>Sort</label>
       <select id="sort">
@@ -84,7 +116,7 @@
         <option value="sku_asc">SKU (asc)</option>
       </select>
     </div>
-    
+
     <button class="primary" id="btnApply" onclick="apply()">Apply</button>
     <button id="btnClear" onclick="clearAll()">Clear</button>
   </div>
@@ -98,37 +130,43 @@
 
   <div class="meta">
     <div class="small" id="status">Ready</div>
-    <div>
-      <label>Page size</label>
-      <select id="pageSize">
-        <option value="10" selected>10</option>
-        <option value="25">25</option>
-        <option value="50">50</option>
-      </select>
-    </div>
-    <div>
-      <button id="btnPrev" onclick="prevPage()">Prev</button>
-      <span class="small" id="pageInfo">Page 1</span>
-      <button id="btnNext" onclick="nextPage()">Next</button>
+
+    <div class="pager-controls">
+      <div>
+        <label>Page size</label>
+        <select id="pageSize" onchange="apply()">
+          <option value="10" selected>10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+        </select>
+      </div>
+
+      <div class="pager-buttons">
+        <button id="btnPrev" onclick="prevPage()">Prev</button>
+        <span class="small" id="pageInfo">Page 1</span>
+        <button id="btnNext" onclick="nextPage()">Next</button>
+      </div>
     </div>
   </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th>SKU</th>
-        <th>Description</th>
-        <th>Category</th>
-        <th>Supplier</th>
-        <th class="num">Stock</th>
-        <th class="num">Cost</th>
-        <th class="num">Value</th>
-      </tr>
-    </thead>
-    <tbody id="rows"></tbody>
-  </table>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Description</th>
+          <th>Category</th>
+          <th>Supplier</th>
+          <th class="num">Stock</th>
+          <th class="num">Cost</th>
+          <th class="num">Value</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
 
-  <!-- Modal HTML (correct placement) -->
+  <!-- Modal -->
   <div class="modal-backdrop" id="modalBackdrop" onclick="closeModal(event)">
     <div class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
       <header>
@@ -139,7 +177,7 @@
         <div class="dl" id="m_body"></div>
       </div>
       <footer>
-        <H3 id="m_title">Proximamente se agregaran botones para editar los items desde aca :) </H3>
+	<H3 id="m_title">Proximamente se agregaran botones para editar los items desde aca :) </H3>
         <button class="primary" onclick="closeModal()">Done</button>
       </footer>
     </div>
@@ -151,6 +189,7 @@
       totalPages: 1,
       missingCategory: 0,
       missingSupplier: 0,
+      lowStockOnly: 0, // quick view (<=10) without having min/max inputs
     };
 
     function money(x){
@@ -194,11 +233,18 @@
 
     function buildParams(){
       const params = new URLSearchParams();
-      const categoria = document.getElementById("categoria").value;
-      const proveedor = document.getElementById("proveedor").value;
-      const q = document.getElementById("q").value;
-      const sort = document.getElementById("sort").value;
-      const pageSize = document.getElementById("pageSize").value;
+
+      const categoriaEl = document.getElementById("categoria");
+      const proveedorEl = document.getElementById("proveedor");
+      const qEl = document.getElementById("q");
+      const sortEl = document.getElementById("sort");
+      const pageSizeEl = document.getElementById("pageSize");
+
+      const categoria = categoriaEl ? categoriaEl.value : "";
+      const proveedor = proveedorEl ? proveedorEl.value : "";
+      const q = qEl ? qEl.value : "";
+      const sort = sortEl ? sortEl.value : "value_desc";
+      const pageSize = pageSizeEl ? pageSizeEl.value : "10";
 
       if (categoria) params.set("categoria", categoria);
       if (proveedor) params.set("proveedor", proveedor);
@@ -210,6 +256,9 @@
 
       if (state.missingCategory) params.set("missingCategory", "1");
       if (state.missingSupplier) params.set("missingSupplier", "1");
+
+      // Low stock quick view without UI inputs
+      if (state.lowStockOnly) params.set("maxStock", "10");
 
       return params;
     }
@@ -283,14 +332,23 @@
     }
 
     function clearAll(){
-      document.getElementById("categoria").value = "";
-      document.getElementById("proveedor").value = "";
-      document.getElementById("q").value = "";
-      document.getElementById("sort").value = "value_desc";
-      document.getElementById("pageSize").value = "10";
+      const categoriaEl = document.getElementById("categoria");
+      const proveedorEl = document.getElementById("proveedor");
+      const qEl = document.getElementById("q");
+      const sortEl = document.getElementById("sort");
+      const pageSizeEl = document.getElementById("pageSize");
+
+      if (categoriaEl) categoriaEl.value = "";
+      if (proveedorEl) proveedorEl.value = "";
+      if (qEl) qEl.value = "";
+      if (sortEl) sortEl.value = "value_desc";
+      if (pageSizeEl) pageSizeEl.value = "10";
+
       state.missingCategory = 0;
       state.missingSupplier = 0;
+      state.lowStockOnly = 0;
       state.page = 1;
+
       refresh();
     }
 
@@ -298,15 +356,24 @@
     function nextPage(){ if (state.page < state.totalPages) { state.page++; refresh(); } }
 
     // Quick views
-    function quickAll(){ state.missingCategory=0; state.missingSupplier=0; state.page=1; refresh(); }
-    function quickLowStock(){
-      state.missingCategory=0; state.missingSupplier=0;
+    function quickAll(){
+      state.missingCategory=0; state.missingSupplier=0; state.lowStockOnly=0;
       state.page=1; refresh();
     }
-    function quickMissingCategory(){ state.missingCategory=1; state.missingSupplier=0; state.page=1; refresh(); }
-    function quickMissingSupplier(){ state.missingCategory=0; state.missingSupplier=1; state.page=1; refresh(); }
+    function quickLowStock(){
+      state.missingCategory=0; state.missingSupplier=0; state.lowStockOnly=1;
+      state.page=1; refresh();
+    }
+    function quickMissingCategory(){
+      state.missingCategory=1; state.missingSupplier=0; state.lowStockOnly=0;
+      state.page=1; refresh();
+    }
+    function quickMissingSupplier(){
+      state.missingCategory=0; state.missingSupplier=1; state.lowStockOnly=0;
+      state.page=1; refresh();
+    }
 
-    // Modal functions (correct placement)
+    // Modal
     function openModal(r){
       document.getElementById("m_title").textContent = `Product detail - ${r.sku ?? ""}`;
 
@@ -338,6 +405,14 @@
       if (e.key === "Escape") closeModal();
     });
 
+    // Enter key triggers Apply (nice for mobile/desktop)
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : "";
+        if (tag === "input" || tag === "select") apply();
+      }
+    });
+
     (async function init(){
       await loadFilters();
       await refresh();
@@ -345,12 +420,3 @@
   </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
