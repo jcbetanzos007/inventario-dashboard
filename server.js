@@ -21,43 +21,162 @@ const pool = mysql.createPool({
   ssl: { ca: required("DB_CA_PEM") },
 });
 
-app.get("/api/inventario", async (req, res) => {
-  const { categoria, proveedor, q } = req.query;
+// Build shared WHERE clause (tolerant to extra spaces)
+function buildFilters(query) {
+  const { categoria, proveedor, q, minStock, maxStock, missingCategory, missingSupplier } = query;
 
-  let sql = `
-    SELECT
-      p.sku,
-      p.descripcion,
-      c.nombre AS categoria,
-      pr.nombre AS proveedor,
-      i.cantidad AS stock,
-      p.costo,
-      (i.cantidad * p.costo) AS valor
-    FROM productos p
-    LEFT JOIN categorias c ON p.categoria_id = c.id
-    LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
-    LEFT JOIN inventario i ON i.producto_id = p.id
-    WHERE 1=1
-  `;
+  let where = " WHERE 1=1 ";
   const params = [];
 
-  if (categoria) { sql += " AND c.nombre = ?"; params.push(categoria); }
-  if (proveedor) { sql += " AND pr.nombre = ?"; params.push(proveedor); }
-  if (q) { sql += " AND (p.sku LIKE ? OR p.descripcion LIKE ?)"; params.push(`%${q}%`, `%${q}%`); }
+  // categoria/proveedor exact match but trimmed on DB side
+  if (categoria) {
+    where += " AND TRIM(c.nombre) = ? ";
+    params.push(String(categoria).trim());
+  }
+  if (proveedor) {
+    where += " AND TRIM(pr.nombre) = ? ";
+    params.push(String(proveedor).trim());
+  }
 
-  sql += " ORDER BY valor DESC LIMIT 500";
+  // missing category/supplier quick views
+  if (String(missingCategory || "") === "1") {
+    where += " AND p.categoria_id IS NULL ";
+  }
+  if (String(missingSupplier || "") === "1") {
+    where += " AND p.proveedor_id IS NULL ";
+  }
 
-  const [rows] = await pool.query(sql, params);
-  res.json(rows);
+  // search
+  if (q) {
+    where += " AND (p.sku LIKE ? OR p.descripcion LIKE ?) ";
+    const like = `%${String(q)}%`;
+    params.push(like, like);
+  }
+
+  // stock range (i.cantidad can be NULL if no row; treat as 0)
+  const minS = minStock !== undefined && minStock !== "" ? Number(minStock) : null;
+  const maxS = maxStock !== undefined && maxStock !== "" ? Number(maxStock) : null;
+
+  if (Number.isFinite(minS)) {
+    where += " AND COALESCE(i.cantidad, 0) >= ? ";
+    params.push(minS);
+  }
+  if (Number.isFinite(maxS)) {
+    where += " AND COALESCE(i.cantidad, 0) <= ? ";
+    params.push(maxS);
+  }
+
+  return { where, params };
+}
+
+function buildSort(sort) {
+  // default: value desc
+  switch (String(sort || "")) {
+    case "stock_desc":
+      return " ORDER BY COALESCE(i.cantidad,0) DESC, p.sku ASC ";
+    case "sku_asc":
+      return " ORDER BY p.sku ASC ";
+    case "value_desc":
+    default:
+      return " ORDER BY (COALESCE(i.cantidad,0) * p.costo) DESC, p.sku ASC ";
+  }
+}
+
+function clampInt(v, def, min, max) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return def;
+  return Math.max(min, Math.min(max, Math.trunc(n)));
+}
+
+const BASE_FROM = `
+  FROM productos p
+  LEFT JOIN categorias c ON p.categoria_id = c.id
+  LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
+  LEFT JOIN inventario i ON i.producto_id = p.id
+`;
+
+// Filters lists
+app.get("/api/filtros", async (_req, res) => {
+  try {
+    const [cats] = await pool.query("SELECT DISTINCT TRIM(nombre) AS nombre FROM categorias ORDER BY TRIM(nombre)");
+    const [provs] = await pool.query("SELECT DISTINCT TRIM(nombre) AS nombre FROM proveedores ORDER BY TRIM(nombre)");
+    res.json({
+      categorias: cats.map(x => x.nombre),
+      proveedores: provs.map(x => x.nombre),
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
 });
 
-app.get("/api/filtros", async (_req, res) => {
-  const [cats] = await pool.query("SELECT nombre FROM categorias ORDER BY nombre");
-  const [provs] = await pool.query("SELECT nombre FROM proveedores ORDER BY nombre");
-  res.json({
-    categorias: cats.map(x => x.nombre),
-    proveedores: provs.map(x => x.nombre),
-  });
+// KPIs
+app.get("/api/kpis", async (req, res) => {
+  try {
+    const { where, params } = buildFilters(req.query);
+
+    const sql = `
+      SELECT
+        COUNT(*) AS total_products,
+        COALESCE(SUM(COALESCE(i.cantidad,0)),0) AS total_stock_units,
+        COALESCE(SUM(COALESCE(i.cantidad,0) * p.costo),0) AS total_value_cost,
+        COALESCE(SUM(CASE WHEN COALESCE(i.cantidad,0) <= 10 THEN 1 ELSE 0 END),0) AS low_stock_count
+      ${BASE_FROM}
+      ${where}
+    `;
+
+    const [rows] = await pool.query(sql, params);
+    res.json(rows[0] || {});
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
+// Inventory (paged)
+app.get("/api/inventario", async (req, res) => {
+  try {
+    const { where, params } = buildFilters(req.query);
+    const sort = buildSort(req.query.sort);
+
+    const pageSize = clampInt(req.query.pageSize, 10, 5, 50); // default 10
+    const page = clampInt(req.query.page, 1, 1, 100000);
+    const offset = (page - 1) * pageSize;
+
+    // total rows for pagination
+    const countSql = `SELECT COUNT(*) AS total ${BASE_FROM} ${where}`;
+    const [countRows] = await pool.query(countSql, params);
+    const totalRows = Number(countRows?.[0]?.total || 0);
+
+    // page data
+    const dataSql = `
+      SELECT
+        p.id AS producto_id,
+        p.sku,
+        p.descripcion,
+        TRIM(c.nombre) AS categoria,
+        TRIM(pr.nombre) AS proveedor,
+        COALESCE(i.cantidad,0) AS stock,
+        p.costo,
+        p.precio,
+        (COALESCE(i.cantidad,0) * p.costo) AS valor
+      ${BASE_FROM}
+      ${where}
+      ${sort}
+      LIMIT ? OFFSET ?
+    `;
+
+    const dataParams = [...params, pageSize, offset];
+    const [rows] = await pool.query(dataSql, dataParams);
+
+    res.json({
+      page,
+      pageSize,
+      totalRows,
+      totalPages: Math.max(1, Math.ceil(totalRows / pageSize)),
+      rows
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
 });
 
 const port = Number(process.env.PORT || "3000");
