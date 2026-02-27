@@ -3,7 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Inventory Dashboard</title>
+  <title>Inventory Amazon Dashboard</title>
+  <H2>Fundamentos de Base de Datos</H2>
+  <H3>Profesor: Juan Manuel Gutierrez</H3>
   <style>
     body{font-family:Arial, sans-serif; margin:16px; color:#111;}
     h2{margin:0 0 12px 0;}
@@ -27,6 +29,30 @@
     td.num{text-align:right; font-variant-numeric:tabular-nums;}
     .small{font-size:12px; color:#666;}
     .loading{opacity:.6;}
+
+    /* Modal styles */
+    .modal-backdrop{
+      position:fixed; inset:0; background:rgba(0,0,0,.35);
+      display:none; align-items:center; justify-content:center; padding:16px;
+      z-index:9999;
+    }
+    .modal{
+      width:min(720px, 96vw);
+      background:#fff; border-radius:12px; border:1px solid #e6e6e6;
+      box-shadow:0 10px 30px rgba(0,0,0,.18);
+    }
+    .modal header{
+      display:flex; justify-content:space-between; align-items:center;
+      padding:12px 14px; border-bottom:1px solid #eee;
+    }
+    .modal h3{margin:0; font-size:16px;}
+    .modal .content{padding:14px;}
+    .dl{display:grid; grid-template-columns:160px 1fr; gap:8px 12px; font-size:13px;}
+    .dl .k{color:#666;}
+    .modal footer{
+      padding:12px 14px; border-top:1px solid #eee;
+      display:flex; justify-content:flex-end; gap:8px;
+    }
   </style>
 </head>
 <body>
@@ -111,6 +137,22 @@
     </thead>
     <tbody id="rows"></tbody>
   </table>
+
+  <!-- Modal HTML (correct placement) -->
+  <div class="modal-backdrop" id="modalBackdrop" onclick="closeModal(event)">
+    <div class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+      <header>
+        <h3 id="m_title">Product detail</h3>
+        <button onclick="closeModal()">Close</button>
+      </header>
+      <div class="content">
+        <div class="dl" id="m_body"></div>
+      </div>
+      <footer>
+        <button class="primary" onclick="closeModal()">Done</button>
+      </footer>
+    </div>
+  </div>
 
   <script>
     const state = {
@@ -209,6 +251,9 @@
 
       (data.rows || []).forEach(r => {
         const tr = document.createElement("tr");
+        tr.style.cursor = "pointer";
+        tr.title = "Click to view details";
+        tr.addEventListener("click", () => openModal(r));
         tr.innerHTML = `
           <td>${r.sku ?? ""}</td>
           <td>${r.descripcion ?? ""}</td>
@@ -223,18 +268,7 @@
 
       if ((data.rows || []).length === 0) {
         const tr = document.createElement("tr");
-        tr.style.cursor = "pointer";
-        tr.title = "Click to view details";
-        tr.addEventListener("click", () => openModal(r));
-        tr.innerHTML = `
-          <td>${r.sku ?? ""}</td>
-          <td>${r.descripcion ?? ""}</td>
-          <td>${(r.categoria ?? "")}</td>
-          <td>${(r.proveedor ?? "")}</td>
-          <td class="num">${intfmt(r.stock)}</td>
-          <td class="num">${money(r.costo)}</td>
-          <td class="num">${money(r.valor)}</td>
-        `;
+        tr.innerHTML = `<td colspan="7" class="small">No results</td>`;
         tbody.appendChild(tr);
       }
 
@@ -288,76 +322,46 @@
     }
     function quickMissingCategory(){ state.missingCategory=1; state.missingSupplier=0; state.page=1; refresh(); }
     function quickMissingSupplier(){ state.missingCategory=0; state.missingSupplier=1; state.page=1; refresh(); }
+
+    // Modal functions (correct placement)
     function openModal(r){
-  document.getElementById("m_title").textContent = `Product detail - ${r.sku ?? ""}`;
+      document.getElementById("m_title").textContent = `Product detail - ${r.sku ?? ""}`;
 
-  const body = document.getElementById("m_body");
-  const items = [
-    ["SKU", r.sku],
-    ["Description", r.descripcion],
-    ["Category", r.categoria],
-    ["Supplier", r.proveedor],
-    ["Stock", intfmt(r.stock)],
-    ["Cost", money(r.costo)],
-    ["Price", money(r.precio)],
-    ["Value (cost)", money(r.valor)]
-  ];
+      const body = document.getElementById("m_body");
+      const items = [
+        ["SKU", r.sku],
+        ["Description", r.descripcion],
+        ["Category", r.categoria],
+        ["Supplier", r.proveedor],
+        ["Stock", intfmt(r.stock)],
+        ["Cost", money(r.costo)],
+        ["Price", money(r.precio)],
+        ["Value (cost)", money(r.valor)]
+      ];
 
-  body.innerHTML = items.map(([k,v]) =>
-    `<div class="k">${k}</div><div>${(v ?? "").toString()}</div>`
-  ).join("");
+      body.innerHTML = items.map(([k,v]) =>
+        `<div class="k">${k}</div><div>${(v ?? "").toString()}</div>`
+      ).join("");
 
-  document.getElementById("modalBackdrop").style.display = "flex";
-}
+      document.getElementById("modalBackdrop").style.display = "flex";
+    }
 
-function closeModal(e){
-  // allow both direct call and backdrop click
-  if (e && e.target && e.target.id !== "modalBackdrop") return;
-  document.getElementById("modalBackdrop").style.display = "none";
-}
+    function closeModal(e){
+      if (e && e.target && e.target.id !== "modalBackdrop") return;
+      document.getElementById("modalBackdrop").style.display = "none";
+    }
 
-// Esc to close
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closeModal();
-});
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeModal();
+    });
+
     (async function init(){
       await loadFilters();
       await refresh();
     })();
   </script>
-  .modal-backdrop{
-  position:fixed; inset:0; background:rgba(0,0,0,.35);
-  display:none; align-items:center; justify-content:center; padding:16px;
-}
-.modal{
-  width:min(720px, 96vw);
-  background:#fff; border-radius:12px; border:1px solid #e6e6e6;
-  box-shadow:0 10px 30px rgba(0,0,0,.18);
-}
-.modal header{
-  display:flex; justify-content:space-between; align-items:center;
-  padding:12px 14px; border-bottom:1px solid #eee;
-}
-.modal h3{margin:0; font-size:16px;}
-.modal .content{padding:14px;}
-.dl{display:grid; grid-template-columns:160px 1fr; gap:8px 12px; font-size:13px;}
-.dl .k{color:#666;}
-.modal footer{padding:12px 14px; border-top:1px solid #eee; display:flex; justify-content:flex-end; gap:8px;}
-<div class="modal-backdrop" id="modalBackdrop" onclick="closeModal(event)">
-  <div class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
-    <header>
-      <h3 id="m_title">Product detail</h3>
-      <button onclick="closeModal()">Close</button>
-    </header>
-    <div class="content">
-      <div class="dl" id="m_body"></div>
-    </div>
-    <footer>
-      <button class="primary" onclick="closeModal()">Done</button>
-    </footer>
-  </div>
-</div>
 </body>
 </html>
+
 
 
