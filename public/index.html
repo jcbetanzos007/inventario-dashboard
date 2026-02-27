@@ -60,7 +60,7 @@
     <div class="card"><div class="k-title">Total products</div><div class="k-val" id="k_total_products">-</div></div>
     <div class="card"><div class="k-title">Total stock units</div><div class="k-val" id="k_total_stock">-</div></div>
     <div class="card"><div class="k-title">Total inventory value (cost)</div><div class="k-val" id="k_total_value">-</div></div>
-    <div class="card"><div class="k-title">Low stock (<= 10)</div><div class="k-val" id="k_low_stock">-</div></div>
+    <div class="card"><div class="k-title">Low stock</div><div class="k-val" id="k_low_stock">-</div></div>
   </div>
 
   <div class="row">
@@ -77,14 +77,6 @@
       <input id="q" placeholder="SKU or description" />
     </div>
     <div>
-      <label>Min stock</label>
-      <input id="minStock" type="number" min="0" step="1" />
-    </div>
-    <div>
-      <label>Max stock</label>
-      <input id="maxStock" type="number" min="0" step="1" />
-    </div>
-    <div>
       <label>Sort</label>
       <select id="sort">
         <option value="value_desc" selected>Value (desc)</option>
@@ -92,15 +84,7 @@
         <option value="sku_asc">SKU (asc)</option>
       </select>
     </div>
-    <div>
-      <label>Page size</label>
-      <select id="pageSize">
-        <option value="10" selected>10</option>
-        <option value="25">25</option>
-        <option value="50">50</option>
-      </select>
-    </div>
-
+    
     <button class="primary" id="btnApply" onclick="apply()">Apply</button>
     <button id="btnClear" onclick="clearAll()">Clear</button>
   </div>
@@ -114,6 +98,14 @@
 
   <div class="meta">
     <div class="small" id="status">Ready</div>
+    <div>
+      <label>Page size</label>
+      <select id="pageSize">
+        <option value="10" selected>10</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+      </select>
+    </div>
     <div>
       <button id="btnPrev" onclick="prevPage()">Prev</button>
       <span class="small" id="pageInfo">Page 1</span>
@@ -360,6 +352,7 @@
   </script>
 </body>
 </html>
+
 
 
 
