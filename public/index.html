@@ -5,44 +5,97 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Inventory Dashboard</title>
   <style>
-    body{font-family:Arial, sans-serif; margin:16px;}
-    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-bottom:12px;}
+    body{font-family:Arial, sans-serif; margin:16px; color:#111;}
+    h2{margin:0 0 12px 0;}
+    .grid{display:grid; gap:10px;}
+    .kpis{grid-template-columns:repeat(4,minmax(180px,1fr));}
+    .card{border:1px solid #e6e6e6; border-radius:10px; padding:12px; background:#fff;}
+    .k-title{font-size:12px; color:#666; margin-bottom:6px;}
+    .k-val{font-size:20px; font-weight:700;}
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin:12px 0;}
     label{display:block; font-size:12px; color:#333; margin-bottom:4px;}
-    select,input{padding:8px; min-width:220px;}
-    button{padding:8px 12px; cursor:pointer;}
-    table{border-collapse:collapse; width:100%; margin-top:12px;}
-    th,td{border:1px solid #ddd; padding:8px; font-size:13px;}
-    th{background:#f3f3f3; text-align:left;}
-    .kpi{margin-top:10px; font-size:14px;}
+    select,input{padding:8px; min-width:180px; border:1px solid #ddd; border-radius:8px;}
+    button{padding:8px 12px; border:1px solid #ddd; border-radius:8px; background:#f7f7f7; cursor:pointer;}
+    button.primary{background:#111; color:#fff; border-color:#111;}
+    button:disabled{opacity:.6; cursor:not-allowed;}
+    .quick{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 0;}
+    .meta{display:flex; justify-content:space-between; align-items:center; margin-top:10px; gap:10px; flex-wrap:wrap;}
+    table{border-collapse:collapse; width:100%; margin-top:10px;}
+    th,td{border-bottom:1px solid #eee; padding:8px; font-size:13px;}
+    th{background:#fafafa; text-align:left; position:sticky; top:0;}
+    tbody tr:nth-child(odd){background:#fcfcfc;}
+    td.num{text-align:right; font-variant-numeric:tabular-nums;}
+    .small{font-size:12px; color:#666;}
+    .loading{opacity:.6;}
   </style>
 </head>
 <body>
   <h2>Inventory Dashboard</h2>
 
+  <div class="grid kpis" id="kpiGrid">
+    <div class="card"><div class="k-title">Total products</div><div class="k-val" id="k_total_products">-</div></div>
+    <div class="card"><div class="k-title">Total stock units</div><div class="k-val" id="k_total_stock">-</div></div>
+    <div class="card"><div class="k-title">Total inventory value (cost)</div><div class="k-val" id="k_total_value">-</div></div>
+    <div class="card"><div class="k-title">Low stock (<= 10)</div><div class="k-val" id="k_low_stock">-</div></div>
+  </div>
+
   <div class="row">
     <div>
       <label>Category</label>
-      <select id="categoria">
-        <option value="">All</option>
-      </select>
+      <select id="categoria"><option value="">All</option></select>
     </div>
-
     <div>
       <label>Supplier</label>
-      <select id="proveedor">
-        <option value="">All</option>
+      <select id="proveedor"><option value="">All</option></select>
+    </div>
+    <div>
+      <label>Search</label>
+      <input id="q" placeholder="SKU or description" />
+    </div>
+    <div>
+      <label>Min stock</label>
+      <input id="minStock" type="number" min="0" step="1" />
+    </div>
+    <div>
+      <label>Max stock</label>
+      <input id="maxStock" type="number" min="0" step="1" />
+    </div>
+    <div>
+      <label>Sort</label>
+      <select id="sort">
+        <option value="value_desc" selected>Value (desc)</option>
+        <option value="stock_desc">Stock (desc)</option>
+        <option value="sku_asc">SKU (asc)</option>
+      </select>
+    </div>
+    <div>
+      <label>Page size</label>
+      <select id="pageSize">
+        <option value="10" selected>10</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
       </select>
     </div>
 
-    <div>
-      <label>Search (SKU or description)</label>
-      <input id="q" placeholder="e.g. MPO, cable, SKU123" />
-    </div>
-
-    <button onclick="loadData()">Apply</button>
+    <button class="primary" id="btnApply" onclick="apply()">Apply</button>
+    <button id="btnClear" onclick="clearAll()">Clear</button>
   </div>
 
-  <div class="kpi" id="kpi"></div>
+  <div class="quick">
+    <button onclick="quickAll()">All</button>
+    <button onclick="quickLowStock()">Low stock (<=10)</button>
+    <button onclick="quickMissingCategory()">Missing category</button>
+    <button onclick="quickMissingSupplier()">Missing supplier</button>
+  </div>
+
+  <div class="meta">
+    <div class="small" id="status">Ready</div>
+    <div>
+      <button id="btnPrev" onclick="prevPage()">Prev</button>
+      <span class="small" id="pageInfo">Page 1</span>
+      <button id="btnNext" onclick="nextPage()">Next</button>
+    </div>
+  </div>
 
   <table>
     <thead>
@@ -51,15 +104,37 @@
         <th>Description</th>
         <th>Category</th>
         <th>Supplier</th>
-        <th>Stock</th>
-        <th>Cost</th>
-        <th>Value</th>
+        <th class="num">Stock</th>
+        <th class="num">Cost</th>
+        <th class="num">Value</th>
       </tr>
     </thead>
     <tbody id="rows"></tbody>
   </table>
 
   <script>
+    const state = {
+      page: 1,
+      totalPages: 1,
+      missingCategory: 0,
+      missingSupplier: 0,
+    };
+
+    function money(x){
+      const n = Number(x || 0);
+      return n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+    function intfmt(x){
+      const n = Number(x || 0);
+      return n.toLocaleString();
+    }
+
+    function setStatus(msg, loading=false){
+      const el = document.getElementById("status");
+      el.textContent = msg;
+      document.body.classList.toggle("loading", !!loading);
+    }
+
     async function loadFilters(){
       const res = await fetch("/api/filtros");
       const data = await res.json();
@@ -68,68 +143,144 @@
       const prov = document.getElementById("proveedor");
 
       data.categorias.forEach(n => {
+        const t = String(n).trim();
         const opt = document.createElement("option");
-        opt.value = n.trim();
-        opt.textContent = n.trim();
+        opt.value = t;
+        opt.textContent = t;
         cat.appendChild(opt);
       });
 
       data.proveedores.forEach(n => {
+        const t = String(n).trim();
         const opt = document.createElement("option");
-        opt.value = n.trim();
-        opt.textContent = n.trim();
+        opt.value = t;
+        opt.textContent = t;
         prov.appendChild(opt);
       });
     }
 
-    function money(x){
-      const n = Number(x || 0);
-      return n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-    }
-
-    async function loadData(){
+    function buildParams(){
+      const params = new URLSearchParams();
       const categoria = document.getElementById("categoria").value;
       const proveedor = document.getElementById("proveedor").value;
       const q = document.getElementById("q").value;
+      const minStock = document.getElementById("minStock").value;
+      const maxStock = document.getElementById("maxStock").value;
+      const sort = document.getElementById("sort").value;
+      const pageSize = document.getElementById("pageSize").value;
 
-      const params = new URLSearchParams();
       if (categoria) params.set("categoria", categoria);
       if (proveedor) params.set("proveedor", proveedor);
       if (q) params.set("q", q);
+      if (minStock) params.set("minStock", minStock);
+      if (maxStock) params.set("maxStock", maxStock);
+      if (sort) params.set("sort", sort);
+      if (pageSize) params.set("pageSize", pageSize);
 
+      params.set("page", String(state.page));
+
+      if (state.missingCategory) params.set("missingCategory", "1");
+      if (state.missingSupplier) params.set("missingSupplier", "1");
+
+      return params;
+    }
+
+    async function loadKPIs(){
+      const base = buildParams();
+      base.delete("page"); // KPIs ignore paging
+      const res = await fetch("/api/kpis?" + base.toString());
+      const k = await res.json();
+
+      document.getElementById("k_total_products").textContent = intfmt(k.total_products);
+      document.getElementById("k_total_stock").textContent = intfmt(k.total_stock_units);
+      document.getElementById("k_total_value").textContent = money(k.total_value_cost);
+      document.getElementById("k_low_stock").textContent = intfmt(k.low_stock_count);
+    }
+
+    async function loadTable(){
+      const params = buildParams();
       const res = await fetch("/api/inventario?" + params.toString());
       const data = await res.json();
+
+      state.totalPages = data.totalPages || 1;
 
       const tbody = document.getElementById("rows");
       tbody.innerHTML = "";
 
-      let totalValue = 0;
-      let totalItems = 0;
-
-      data.forEach(r => {
-        totalValue += Number(r.valor || 0);
-        totalItems += 1;
-
+      (data.rows || []).forEach(r => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${r.sku ?? ""}</td>
           <td>${r.descripcion ?? ""}</td>
-          <td>${(r.categoria ?? "").trim()}</td>
-          <td>${(r.proveedor ?? "").trim()}</td>
-          <td>${r.stock ?? 0}</td>
-          <td>${money(r.costo)}</td>
-          <td>${money(r.valor)}</td>
+          <td>${(r.categoria ?? "")}</td>
+          <td>${(r.proveedor ?? "")}</td>
+          <td class="num">${intfmt(r.stock)}</td>
+          <td class="num">${money(r.costo)}</td>
+          <td class="num">${money(r.valor)}</td>
         `;
         tbody.appendChild(tr);
       });
 
-      document.getElementById("kpi").textContent =
-        `Rows: ${totalItems.toLocaleString()} | Total inventory value (cost): ${money(totalValue)}`;
+      if ((data.rows || []).length === 0) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="7" class="small">No results</td>`;
+        tbody.appendChild(tr);
+      }
+
+      document.getElementById("pageInfo").textContent = `Page ${state.page} of ${state.totalPages}`;
+      document.getElementById("btnPrev").disabled = state.page <= 1;
+      document.getElementById("btnNext").disabled = state.page >= state.totalPages;
     }
+
+    async function refresh(){
+      setStatus("Loading...", true);
+      try{
+        await loadKPIs();
+        await loadTable();
+        setStatus("Ready");
+      }catch(e){
+        setStatus("Error: " + (e?.message || e));
+      }finally{
+        setStatus(document.getElementById("status").textContent, false);
+      }
+    }
+
+    function apply(){
+      state.page = 1;
+      refresh();
+    }
+
+    function clearAll(){
+      document.getElementById("categoria").value = "";
+      document.getElementById("proveedor").value = "";
+      document.getElementById("q").value = "";
+      document.getElementById("minStock").value = "";
+      document.getElementById("maxStock").value = "";
+      document.getElementById("sort").value = "value_desc";
+      document.getElementById("pageSize").value = "10";
+      state.missingCategory = 0;
+      state.missingSupplier = 0;
+      state.page = 1;
+      refresh();
+    }
+
+    function prevPage(){ if (state.page > 1) { state.page--; refresh(); } }
+    function nextPage(){ if (state.page < state.totalPages) { state.page++; refresh(); } }
+
+    // Quick views
+    function quickAll(){ state.missingCategory=0; state.missingSupplier=0; state.page=1; refresh(); }
+    function quickLowStock(){
+      state.missingCategory=0; state.missingSupplier=0;
+      document.getElementById("maxStock").value = "10";
+      document.getElementById("minStock").value = "";
+      state.page=1; refresh();
+    }
+    function quickMissingCategory(){ state.missingCategory=1; state.missingSupplier=0; state.page=1; refresh(); }
+    function quickMissingSupplier(){ state.missingCategory=0; state.missingSupplier=1; state.page=1; refresh(); }
 
     (async function init(){
       await loadFilters();
-      await loadData();
+      await refresh();
     })();
   </script>
 </body>
